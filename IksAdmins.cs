@@ -6,7 +6,7 @@ using IksAdminApi;
 
 namespace IksAdmins;
 
-public partial class IksAdmins : BasePlugin
+public partial class IksAdmins : AdminModule
 {
     internal static DataBaseService? _dataBaseService;
 
@@ -15,15 +15,14 @@ public partial class IksAdmins : BasePlugin
     public override string ModuleAuthor => "E!N";
     public override string ModuleVersion => "v1.0.0";
 
-    private readonly IIksAdminApi api = AdminModule.Api;
 
-    public override void OnAllPluginsLoaded(bool hotReload)
+    public override void Ready()
     {
         _dataBaseService = new DataBaseService(
             Localizer
         );
         _dataBaseService.TestAndCheckDataBaseTableAsync().GetAwaiter().GetResult();
-        api.OnFullConnect += OnFullConnect;
+        Api.OnFullConnect += OnFullConnect;
         _ = (_dataBaseService?.ReloadCacheAsync());
     }
 
@@ -31,7 +30,7 @@ public partial class IksAdmins : BasePlugin
     {
         if (ulong.TryParse(steamId, out ulong steamId64))
         {
-            if (AdminModule.Api.ServerAdmins.TryGetValue(steamId64, out _))
+            if (Api.ServerAdmins.TryGetValue(steamId64, out _))
             {
                 await _dataBaseService!.AddAdminInListAsync(steamId);
             }
@@ -40,8 +39,9 @@ public partial class IksAdmins : BasePlugin
 
     public override void Unload(bool hotReload)
     {
-        api.OnFullConnect -= OnFullConnect;
-        api.NextPlayerMessage.Clear();
+        base.Unload(hotReload);
+        Api.OnFullConnect -= OnFullConnect;
+        Api.NextPlayerMessage.Clear();
     }
 
     [ConsoleCommand("css_admins", "AdminsList")]
@@ -49,7 +49,7 @@ public partial class IksAdmins : BasePlugin
     {
         if (player != null)
         {
-            IDynamicMenu menu = api.CreateMenu("", Localizer["menu.admins.title"]);
+            IDynamicMenu menu = Api.CreateMenu("", Localizer["menu.admins.title"]);
 
             foreach (CCSPlayerController? user in PlayersUtils.GetOnlinePlayers(includeBots: false))
             {
@@ -60,7 +60,7 @@ public partial class IksAdmins : BasePlugin
 
                 Admin? admin = AdminUtils.Admin(user);
 
-                if (admin == null || api.HidenAdmins.Any(a => a.SteamId == admin.SteamId))
+                if (admin == null || Api.HidenAdmins.Any(a => a.SteamId == admin.SteamId))
                 {
                     continue;
                 }
@@ -87,7 +87,7 @@ public partial class IksAdmins : BasePlugin
 
     private void CreateAndOpenAdminMenu(CCSPlayerController player, Admin admin, IDynamicMenu? main_menu, (int Likes, int Dislikes)? rep, string? contact)
     {
-        IDynamicMenu menu = api.CreateMenu(MenuUtils.GenerateMenuId($"admin_info_{admin.SteamId}"), Localizer["menu.select.admin.title", admin.CurrentName], backMenu: main_menu);
+        IDynamicMenu menu = Api.CreateMenu(MenuUtils.GenerateMenuId($"admin_info_{admin.SteamId}"), Localizer["menu.select.admin.title", admin.CurrentName], backMenu: main_menu);
 
         // Группа
         if (admin.Group != null)
@@ -119,7 +119,7 @@ public partial class IksAdmins : BasePlugin
         // Дата окончания
         menu.AddMenuOption(
             MenuUtils.GenerateOptionId($"admin_info_end_{admin.SteamId}"),
-            Localizer["menu.select.admin.end", admin.EndAt.HasValue && admin.EndAt.Value > 0 ? Utils.GetDateString(admin.EndAt.Value) : api.Localizer["Other.Never"]],
+            Localizer["menu.select.admin.end", admin.EndAt.HasValue && admin.EndAt.Value > 0 ? Utils.GetDateString(admin.EndAt.Value) : Api.Localizer["Other.Never"]],
             (p, opt) => { },
             disabled: true
         );
@@ -199,19 +199,19 @@ public partial class IksAdmins : BasePlugin
             return;
         }
 
-        api.HookNextPlayerMessage(player, input =>
+        Api.HookNextPlayerMessage(player, input =>
         {
-            api.RemoveNextPlayerMessageHook(player);
+            Api.RemoveNextPlayerMessageHook(player);
             if (input.ToLower() is "cancel" or "отмена")
             {
                 AdminUtils.Print(player, Localizer["message.canceled"]);
-                api.RemoveNextPlayerMessageHook(player);
+                Api.RemoveNextPlayerMessageHook(player);
                 return;
             }
 
             if (!player.IsValid || admin.Controller == null || !admin.Controller.IsValid)
             {
-                api.RemoveNextPlayerMessageHook(player);
+                Api.RemoveNextPlayerMessageHook(player);
                 return;
             }
 
@@ -235,21 +235,21 @@ public partial class IksAdmins : BasePlugin
 
         ulong steamId = player.AuthorizedSteamID.SteamId64;
 
-        api.HookNextPlayerMessage(player, async input =>
+        Api.HookNextPlayerMessage(player, async input =>
         {
             if (input.ToLower() is "cancel" or "отмена")
             {
                 Server.NextFrame(() =>
                 {
                     AdminUtils.Print(player, Localizer["contact.canceled"]);
-                    api.RemoveNextPlayerMessageHook(player);
+                    Api.RemoveNextPlayerMessageHook(player);
                 });
                 return;
             }
 
             if (!player.IsValid)
             {
-                Server.NextFrame(() => api.RemoveNextPlayerMessageHook(player));
+                Server.NextFrame(() => Api.RemoveNextPlayerMessageHook(player));
                 return;
             }
 
@@ -257,7 +257,7 @@ public partial class IksAdmins : BasePlugin
             await _dataBaseService!.SetContactAsync(steamId, input);
             Server.NextFrame(() =>
             {
-                api.RemoveNextPlayerMessageHook(player);
+                Api.RemoveNextPlayerMessageHook(player);
                 if (player.IsValid)
                 {
                     OnSelectAdmin(player, admin, main_menu);
